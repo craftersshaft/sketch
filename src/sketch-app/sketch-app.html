@@ -668,8 +668,8 @@ Polymer({
   _copy: function () {
     if (!this.sketchDisabled) {
       var data = this.$.sketch.data;
-      navigator.clipboard.writeText(data);
 	  console.log(data); //if firefox wants to fuck this up
+      navigator.clipboard.writeText(data);
 
       if (data) {
         this._alert('copied to clipboard');
