@@ -1,0 +1,829 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/app-localize-behavior/app-localize-behavior.html">
+<link rel="import" href="../../bower_components/paper-button/paper-button.html">
+<link rel="import" href="../../bower_components/iron-a11y-keys-behavior/iron-a11y-keys-behavior.html">
+<link rel="import" href="../../bower_components/iron-a11y-keys/iron-a11y-keys.html">
+<link rel="import" href="../../bower_components/iron-flex-layout/iron-flex-layout.html">
+<link rel="import" href="../../bower_components/paper-toggle-button/paper-toggle-button.html">
+<link rel="import" href="../../bower_components/paper-toolbar/paper-toolbar.html">
+<link rel="import" href="../../bower_components/paper-progress/paper-progress.html">
+<link rel="import" href="../../bower_components/paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../../bower_components/paper-fab/paper-fab.html">
+<link rel="import" href="../../bower_components/paper-slider/paper-slider.html">
+<link rel="import" href="../../bower_components/paper-menu-button/paper-menu-button.html">
+<link rel="import" href="../../bower_components/iron-icons/iron-icons.html">
+<link rel="import" href="../../bower_components/iron-icons/editor-icons.html">
+<link rel="import" href="../mdi/mdi.html">
+<link rel="import" href="../fit-ratio-container/fit-ratio-container.html">
+<link rel="import" href="../sketch-canvas/sketch-canvas.html">
+<link rel="import" href="../sketch-api/sketch-api.html">
+<link rel="import" href="../sketch-tabs/sketch-tabs.html">
+
+<dom-module id="arrow-events">
+  <script>// custom key event module for keyup events for etch mode
+// since iron-a11y-keys only fires keypress events
+Polymer({
+  is: 'arrow-events',
+  behaviors: [Polymer.IronA11yKeysBehavior],
+  properties: {
+    target: {
+      type: Object,
+      observer: '_targetChanged'
+    }
+  },
+  keyBindings: {
+    'up:keydown down:keydown left:keydown right:keydown': '_fire',
+    'up:keyup down:keyup left:keyup right:keyup': '_fire'
+  },
+  // stolen from iron-a11y-keys
+  attached: function () {
+    if (!this.target) {
+      this.target = this.parentNode;
+    }
+  },
+  _targetChanged: function (target) {
+    this.keyEventTarget = target;
+  },
+  _fire: function (event) {
+    this.fire('arrow-event', event.detail, {});
+  }
+});</script>
+</dom-module>
+
+<dom-module id="sketch-app">
+  <template>
+    <style>
+      :host {
+        @apply(--layout-fit);
+        @apply(--layout-vertical);
+        --paper-slider-height: 4px;
+      }
+
+      .content {
+        flex-grow: 1;
+        position: relative;
+      }
+
+      paper-toolbar .title {
+        user-select: none;  /* prevents selection when pressing down with a pen */
+        margin: 0;
+      }
+
+      .title span {
+        margin: 0px 8px;
+        font-size: 20px;
+        font-family: "Jost", "Roboto", "Noto", sans-serif;
+        line-height: normal;
+      }
+
+      .title .stats {
+        display: inline-block;
+      }
+
+      paper-fab {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+      }
+
+      fit-ratio-container {
+        @apply(--layout-fit);
+        margin: 16px;
+      }
+
+      #sketch {
+        width: 100%;
+        height: 100%;
+      }
+
+      paper-toolbar paper-progress.fit {
+        top: 0;
+      }
+
+      paper-icon-button[toggles]:not([active]),
+      paper-icon-button[disabled],
+      paper-menu-button[disabled] {
+        color: #3c0101;
+      }
+
+      paper-menu-button {
+        padding: 0;
+      }
+
+      .settings {
+        font-family: 'Roboto', 'Noto', sans-serif;
+        font-size: 16px;
+        color: #000;
+        padding: 8px;
+        position: relative;
+        width: min-content;
+        max-height: 300px;
+        overflow-y: scroll;
+      }
+
+      .settings h2 {
+        text-transform: uppercase;
+        color: #aaa;
+        font-size: 14px;
+        letter-spacing: 2px;
+        padding: 10px 18px 6px;
+        margin: 0px;
+      }
+
+      .settings .settings-item {
+        display: flex;
+        min-width: 370px;
+        padding: 2px 10px;
+      }
+      .settings .settings-item > * {
+        align-items: center;
+      }
+      .settings .settings-item > div {
+        display: flex; /* cheap centering */
+        padding: 8px;
+        flex: 1 1 auto;
+        align-items: center;
+      }
+      .settings .settings-item > paper-toggle-button {
+        flex: 0 1 auto;
+        padding-left: 20px;
+      }
+      .settings .settings-item.slider > div {
+        flex: 1 1 0;
+      }
+      .settings .settings-item.slider > paper-slider {
+        flex: 0 1 auto;
+        width: 210px;
+      }
+
+      .settings .settings-double {
+        display: flex;
+        min-width: 410px;
+        margin: 0;
+      }
+      .settings .settings-double .settings-item {
+        flex: 1;
+        min-width: 0;
+      }
+      .settings-double .settings-item.slider > paper-slider {
+        flex: 1 0 auto;
+        width: auto;
+        max-width: 210px;
+      }
+      .settings .settings-double .settings-item:nth-Child(1) {
+        padding-right: 0px;
+      }
+
+      /* for hideStats */
+
+      .title {
+        display: flex;
+      }
+      .title .stats {
+        margin-left: auto;
+      }
+      .title .stats span {
+        /* really dumb workaround */
+        margin-left: 3px;
+      }
+
+    </style>
+
+    <div class="content">
+      <fit-ratio-container ratio="4/3" id="container">
+          <sketch-canvas id="sketch" ink="{{ink}}" tool="{{tool}}" can-undo="{{canUndo}}" can-redo="{{canRedo}}" etch-mode="{{etchMode}}" line-step="{{lineStep}}" tone-radius="{{toneRadius}}" tone-spacing="{{toneSpacing}}" tone-offset-x="{{toneOffsetX}}" tone-offset-y="{{toneOffsetY}}" fill-screentone="{{fillScreentone}}" eraser-radius="{{eraserRadius}}" shape-sides="{{shapeSides}}" time-resolution="{{timeResolution}}" animation-speed="{{animationSpeed}}" limited-ink="{{limitedInk}}" detect-screentone="{{detectScreentone}}" on-tool-changed="_closeMenus" drawing="{{drawing}}" disabled="{{sketchDisabled}}"></sketch-canvas>
+      </fit-ratio-container>
+      <paper-fab title="{{localize('swap')}}" icon="send" hidden="{{hideSwap}}" disabled="{{_swapDisabled(sketchDisabled, loading, ink)}}" on-tap="_swap"></paper-fab>
+    </div>
+
+    <paper-toolbar id="toolbar">
+      <paper-progress class="fit" hidden="{{!loading}}" indeterminate=""></paper-progress>
+
+      <paper-icon-button title="{{localize('reset')}}" icon="delete" disabled="{{_resetDisabled(sketchDisabled, loading, canUndo, ink)}}" on-tap="_reset"></paper-icon-button>
+      <paper-icon-button title="{{localize('undo')}}" icon="undo" disabled="{{_undoDisabled(sketchDisabled, loading, canUndo, undoDisabled)}}" on-tap="_undo"></paper-icon-button>
+      <paper-icon-button title="{{localize('redo')}}" icon="redo" disabled="{{_editDisabled(loading, canRedo)}}" on-tap="_redo"></paper-icon-button>
+      <paper-menu-button id="menuEraser" disabled="{{_toolDisabled(sketchDisabled, loading)}}" dynamic-align="" vertical-align="bottom" vertical-offset="60" on-opened-changed="_erase">
+          <paper-icon-button class="dropdown-trigger" title="{{localize('eraser')}}" icon="mdi:eraser-variant" active="{{_isErasing(tool)}}" toggles="{{!_isErasing(tool)}}"></paper-icon-button>
+          <div class="dropdown-content settings">
+              <h2>Eraser</h2>
+              <div class="settings-item slider">
+                  <div>Radius</div>
+                  <paper-slider value="{{eraserRadius}}" min="1" max="50" editable=""></paper-slider>
+              </div>
+          </div>
+      </paper-menu-button>
+      <paper-icon-button title="{{localize('move')}}" icon="mdi:cursor-move" disabled="{{_toolDisabled(sketchDisabled, loading)}}" active="{{_isMoving(tool)}}" toggles="{{!_isMoving(tool)}}" on-tap="_move"></paper-icon-button>
+      <paper-icon-button title="{{localize('pen')}}" icon="create" disabled="{{_toolDisabled(sketchDisabled, loading)}}" active="{{_isDrawing(tool)}}" toggles="{{!_isDrawing(tool)}}" on-tap="_draw"></paper-icon-button>
+      <paper-menu-button id="menuFill" disabled="{{_toolDisabled(sketchDisabled, loading)}}" dynamic-align="" vertical-align="bottom" vertical-offset="60" on-opened-changed="_fill">
+        <paper-icon-button class="dropdown-trigger" title="{{localize('fill')}}" icon="editor:format-color-fill" active="{{_isFilling(tool)}}" toggles="{{!_isFilling(tool)}}"></paper-icon-button>
+          <div class="dropdown-content settings">
+              <h2>Filling</h2>
+              <div class="settings-item">
+                  <div>Screentone</div>
+                  <paper-toggle-button checked="{{fillScreentone}}" noink=""></paper-toggle-button>
+              </div>
+              <h2>Screentoning</h2>
+              <div class="settings-item slider">
+                  <div>Spacing</div>
+                  <paper-slider value="{{toneSpacing}}" disabled="{{!fillScreentone}}" min="2" max="40" editable=""></paper-slider>
+              </div>
+              <h2>Screentone Offset</h2>
+              <div class="settings-double">
+                  <div class="settings-item slider">
+                      <div>X</div>
+                      <paper-slider value="{{toneOffsetX}}" disabled="{{!fillScreentone}}" min="-20" max="20" editable=""></paper-slider>
+                  </div>
+                  <div class="settings-item slider">
+                      <div>Y</div>
+                      <paper-slider value="{{toneOffsetY}}" disabled="{{!fillScreentone}}" min="-20" max="20" editable=""></paper-slider>
+                  </div>
+              </div>
+          </div>
+      </paper-menu-button>
+      <paper-menu-button id="menuScreentone" disabled="{{_toolDisabled(sketchDisabled, loading)}}" dynamic-align="" vertical-align="bottom" vertical-offset="60" on-opened-changed="_screentone">
+        <paper-icon-button class="dropdown-trigger" title="{{localize('screentone')}}" icon="editor:border-clear" active="{{_isToning(tool)}}" toggles="{{!_isToning(tool)}}"></paper-icon-button>
+          <div class="dropdown-content settings">
+              <h2>Screentoning</h2>
+              <div class="settings-double">
+                  <div class="settings-item slider">
+                      <div>Spacing</div>
+                      <paper-slider value="{{toneSpacing}}" min="2" max="40" editable=""></paper-slider>
+                  </div>
+                  <div class="settings-item slider">
+                      <div>Radius</div>
+                      <paper-slider value="{{toneRadius}}" min="1" max="20" editable=""></paper-slider>
+                  </div>
+              </div>
+              <h2>Screentone Offset</h2>
+              <div class="settings-double">
+                  <div class="settings-item slider">
+                      <div>X</div>
+                      <paper-slider value="{{toneOffsetX}}" min="-20" max="20" editable=""></paper-slider>
+                  </div>
+                  <div class="settings-item slider">
+                      <div>Y</div>
+                      <paper-slider value="{{toneOffsetY}}" min="-20" max="20" editable=""></paper-slider>
+                  </div>
+              </div>
+          </div>
+      </paper-menu-button>
+	  
+	  <paper-menu-button id="menuShape" disabled="{{_toolDisabled(sketchDisabled, loading)}}" dynamic-align="" vertical-align="bottom" vertical-offset="60" on-opened-changed="_shape">
+          <paper-icon-button class="dropdown-trigger" title="{{localize('shape')}}" icon="timeline" active="{{_isShaping(tool)}}" toggles="{{!_isShaping(tool)}}"></paper-icon-button>
+          <div class="dropdown-content settings">
+              <h2>Shape Tool</h2>
+              <div class="settings-item slider">
+                  <div>Sides</div>
+                  <paper-slider value="{{shapeSides}}" min="2" max="96" editable=""></paper-slider>
+              </div>
+          </div>
+	  </paper-menu-button> 
+	  
+	  
+	  
+	  
+      <paper-menu-button dynamic-align="" allow-outside-scroll="" vertical-align="bottom" vertical-offset="60">
+          <paper-icon-button class="dropdown-trigger" title="{{localize('settings')}}" icon="settings"></paper-icon-button>
+          <div class="dropdown-content settings">
+
+              <h2>General</h2>
+              <div class="settings-item slider">
+                  <div>Sample Rate (ms)</div>
+                  <paper-slider value="{{timeResolution}}" min="0" max="50" editable=""></paper-slider>
+              </div>
+              <div class="settings-item slider">
+                  <div>Animation speed</div>
+                  <paper-slider value="{{animationSpeed}}" min="5" max="30" editable=""></paper-slider>
+              </div>
+              <div class="settings-item">
+                  <div>Hide swap button</div>
+                  <paper-toggle-button checked="{{hideSwap}}" noink=""></paper-toggle-button>
+              </div>
+              <div class="settings-item">
+                  <div>Automatically save sketch and history</div>
+                  <paper-toggle-button checked="{{autosave}}" noink=""></paper-toggle-button>
+              </div>
+              <div class="settings-item">
+                  <div>Automatically save tool settings</div>
+                  <paper-toggle-button checked="{{autosaveTools}}" noink=""></paper-toggle-button>
+              </div>
+              <div class="settings-item">
+                  <div>Restrict drawing past ink limit</div>
+                  <paper-toggle-button checked="{{limitedInk}}" noink=""></paper-toggle-button>
+              </div>
+              <div class="settings-item">
+                  <div>Automatically detect screentone of pastes</div>
+                  <paper-toggle-button checked="{{detectScreentone}}" noink=""></paper-toggle-button>
+              </div>
+
+              <hr>
+              <h2>Etch-a-Sketch</h2>
+              <div class="settings-item">
+                  <div>Etch-a-Sketch mode</div>
+                  <paper-toggle-button checked="{{etchMode}}" noink=""></paper-toggle-button>
+              </div>
+              <div class="settings-item slider">
+                  <div>Line step (px)</div>
+                  <paper-slider value="{{lineStep}}" max="20" min="1" disabled="{{!etchMode}}" editable=""></paper-slider>
+              </div>
+          </div>
+      </paper-menu-button> 
+	  
+
+      <div class="title">
+        <span>{{localize('ink', 'amount', flooredInk)}}</span>
+        <span id="alert"></span>
+        <div class="stats">
+          <span>{{localize('sketches', 'num', sketches)}}</span>
+          <span>{{localize('artists', 'num', artists)}}</span>
+          <span>{{localize('peekers', 'num', peekers)}}</span>
+        </div>
+      </div>
+
+      <paper-icon-button title="{{localize('peek')}}" icon="visibility" disabled="{{loading}}" on-tap="_peek"></paper-icon-button>
+      <paper-icon-button title="{{localize('viewGallery')}}" icon="view-module" on-tap="_viewGallery"></paper-icon-button>
+      <paper-icon-button title="{{localize('save')}}" icon="save" on-tap="_save"></paper-icon-button>
+    </paper-toolbar>
+
+    <iron-a11y-keys target="[[target]]" keys="ctrl+z" on-keys-pressed="_undo"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+y" on-keys-pressed="_redo"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+s" on-keys-pressed="_save"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="delete" on-keys-pressed="_reset"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="s" on-keys-pressed="_screentone"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="e" on-keys-pressed="_erase"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="m" on-keys-pressed="_move"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="b p" on-keys-pressed="_draw"></iron-a11y-keys>
+	<iron-a11y-keys target="[[target]]" keys="l" on-keys-pressed="_shape"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="f" on-keys-pressed="_fill"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+enter" on-keys-pressed="_swap"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+c" on-keys-pressed="_copy"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+v" on-keys-pressed="_paste"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="ctrl+alt+c" on-keys-pressed="_copyImage"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="[" on-keys-pressed="_changeSize"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="]" on-keys-pressed="_changeSize"></iron-a11y-keys>
+    <iron-a11y-keys target="[[target]]" keys="tab" on-keys-pressed="_hideUI"></iron-a11y-keys>
+
+    <arrow-events target="[[target]]" on-arrow-event="_arrowEvent"></arrow-events>
+
+    <sketch-api id="api" sketches="{{sketches}}" artists="{{artists}}" peekers="{{peekers}}" loading="{{loading}}" on-get="_onGet" on-swap-failed="_onSwapFailed" on-swap-waiting="_onSwapWaiting"></sketch-api>
+  </template>
+
+  <script>Polymer({
+  is: 'sketch-app',
+  behaviors: [Polymer.AppLocalizeBehavior, Sketch.TabBehavior],
+  listeners: {
+    'app-resources-loaded': '_hideStats'
+  },
+  ready: function () {
+    // override to fix constant string-int casting of .value between
+    // paper-slider instances with the textarea that would eventually
+    // cause stack errors
+    Polymer.IronRangeBehavior._changeValue = function (event) {
+      this.value = parseInt(event.target.value);
+      this.fire('change');
+    };
+
+    document.querySelectorAll('paper-slider').forEach(e => {
+      e._changeValue = Polymer.IronRangeBehavior._changeValue;
+    });
+    setInterval(this._saveData.bind(this), 10000);
+
+    this._restoreData();
+
+    window.addEventListener('pagehide', this._saveData.bind(this));
+    document.addEventListener('onfreeze', this._saveData.bind(this));
+    window.addEventListener("resize", this._hideStats.bind(this)); // Prevent Chrome from capturing CTRL+S
+
+    window.addEventListener('keydown', function (event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key == 's' || event.key == 'S')) {
+        event.preventDefault();
+        return false;
+      }
+
+      return true;
+    });
+  },
+  attached: function () {
+    this.loadResources(this.resolveUrl('locales.json'));
+  },
+  // Public properties
+  properties: {
+    target: {
+      type: Object,
+      value: document.body
+    },
+    undoDisabled: {
+      type: Boolean,
+      value: false
+    },
+    language: {
+      value: 'en'
+    },
+    rememberTab: {
+      type: Boolean,
+      computed: "_rememberTab(autosave, sketchDisabled, ink)"
+    },
+    hideSwap: {
+      type: Boolean,
+      value: false
+    },
+    autosave: {
+      type: Boolean,
+      value: true
+    },
+    autosaveTools: {
+      type: Boolean,
+      value: true
+    },
+    flooredInk: {
+      type: Number,
+      readOnly: true,
+      computed: "_flooredInk(ink)"
+    }
+  },
+  // Private properties
+  _sleepPromise: null,
+  // Private methods
+  _swapDisabled: function (sketchDisabled, loading, ink) {
+    return sketchDisabled || loading || ink <= 0;
+    /* ink might be affected by the negative ink bug but i'm not
+       sure if that's still around after the eraser fix */
+  },
+  _toolDisabled: function (sketchDisabled, loading) {
+    return sketchDisabled || loading;
+  },
+  _resetDisabled: function (sketchDisabled, loading, enabled, ink) {
+    return loading || ink <= 0 || (sketchDisabled ? false : !enabled);
+  },
+  _undoDisabled: function (sketchDisabled, loading, enabled, undoDisabled) {
+    return sketchDisabled && !undoDisabled ? false : loading || !enabled;
+  },
+  _editDisabled: function (loading, enabled) {
+    return loading || !enabled;
+  },
+  _rememberTab: function (autosave, sketchDisabled, ink) {
+    return autosave && !sketchDisabled && ink > 0;
+  },
+  _saveData: function () {
+    if (this.rememberTab) {
+      var save = {
+        data: this.$.sketch.data,
+        tonePoints: [...this.$.sketch.$.data.tonePoints],
+        history: this.$.sketch.$.data.history,
+        head: this.$.sketch.$.data.head
+      };
+      localStorage.setItem('save' + this.tabID, JSON.stringify(save));
+    } else {
+      localStorage.removeItem('save' + this.tabID);
+    }
+
+    if (this.autosaveTools) {
+      var toolSettings = {
+        tool: this.tool,
+        eraserRadius: this.$.sketch.eraserRadius,
+        fillScreentone: this.$.sketch.fillScreentone,
+        toneOffsetX: this.$.sketch.toneOffsetX,
+        toneOffsetY: this.$.sketch.toneOffsetY,
+        toneRadius: this.$.sketch.toneRadius,
+        toneSpacing: this.$.sketch.toneSpacing
+      };
+      localStorage.setItem('toolSettings', JSON.stringify(toolSettings));
+    } else {
+      localStorage.removeItem('toolSettings');
+    }
+
+    var settings = {
+      timeResolution: this.$.sketch.timeResolution,
+      animationSpeed: this.$.sketch.animationSpeed,
+      detectScreentone: this.$.sketch.$.data.detectScreentone,
+      limitedInk: this.$.sketch.$.data.limitedInk,
+      autosave: this.autosave,
+      autosaveTools: this.autosaveTools
+    };
+    localStorage.setItem('settings', JSON.stringify(settings));
+  },
+  _restoreData: function () {
+    // individual settings not in localStorage will fallback to their defaults
+    var settings = JSON.parse(localStorage.getItem('settings'));
+
+    if (settings) {
+      this._setSetting("timeResolution", settings);
+
+      this._setSetting("animationSpeed", settings);
+
+      this._setSetting("detectScreentone", settings);
+
+      this._setSetting("limitedInk", settings);
+
+      this._setSetting("autosave", settings);
+
+      this._setSetting("autosaveTools", settings);
+    }
+
+    var save = JSON.parse(localStorage.getItem('save' + this.tabID));
+
+    if (save) {
+      this._setSetting("data", save, this.$.sketch);
+
+      this._setSetting("history", save, this.$.sketch.$.data);
+
+      this._setSetting("head", save, this.$.sketch.$.data);
+
+      if (!save.tonePoints === undefined) {
+        this.$.sketch.$.data.tonePoints = new Set(save.tonePoints);
+      }
+    }
+
+    var toolSettings = JSON.parse(localStorage.getItem('toolSettings'));
+
+    if (toolSettings) {
+      this._setSetting("tool", toolSettings, this.$.sketch, "desiredTool");
+
+      this._setSetting("eraserRadius", toolSettings);
+
+      this._setSetting("fillScreentone", toolSettings);
+
+      this._setSetting("toneOffsetX", toolSettings);
+
+      this._setSetting("toneOffsetY", toolSettings);
+
+      this._setSetting("toneRadius", toolSettings);
+
+      this._setSetting("toneSpacing", toolSettings);
+    }
+  },
+  // Event handlers for ajax
+  _onSwapWaiting: function () {
+    this._alert('waiting for other sketch...');
+  },
+  _onSwapFailed: function (e) {
+    this.sketchDisabled = false;
+
+    this._alert(e.detail.swap ? 'failed to swap' : 'failed to fetch');
+  },
+  _onGet: function (data) {
+    this.$.sketch.data = data.detail;
+    this.$.sketch.play();
+  },
+  // Event handlers for buttons
+  _swap: function () {
+    var swapDisabled = this._swapDisabled(this.sketchDisabled, this.loading, this.ink);
+
+    if (!swapDisabled && !this.drawing) {
+      this.$.api.swap(this.$.sketch.$.data.alteredDots());
+      this.sketchDisabled = true;
+      this.undoDisabled = true;
+    }
+  },
+  _undo: function () {
+    if (this.sketchDisabled) {
+      this.$.sketch.stop();
+      this.sketchDisabled = false;
+      this.$.sketch.undo();
+      this.$.sketch.$.data.history = this.$.sketch.$.data.history.slice(0, -1);
+    } else {
+      if (!this.drawing) {
+        this.$.sketch.undo();
+      }
+    }
+  },
+  _redo: function () {
+    if (!this.drawing) {
+      this.$.sketch.redo();
+    }
+  },
+  _erase: function (e) {
+    this._menuAction(e, this.$.menuEraser, 'eraser');
+  },
+  _draw: function () {
+    this.$.sketch.desiredTool = 'pen';
+  },
+  _move: function () {
+    this.$.sketch.desiredTool = 'move';
+  },
+  _shape: function () {
+    this.$.sketch.desiredTool = 'shape';
+  },
+  _shapeLine: function () {
+    this.$.sketch.shapeSides = 2;
+  },
+  _shapeSquare: function () {
+    this.$.sketch.shapeSides = 4;
+  },
+  _shapeCircle: function () {
+    this.$.sketch.shapeSides = 64;
+  },
+  _screentone: function (e) {
+    this._menuAction(e, this.$.menuScreentone, 'screentone');
+  },
+  _fill: function (e) {
+    this._menuAction(e, this.$.menuFill, 'fill');
+  },
+  _reset: function () {
+    if (this.drawing) {
+      return;
+    }
+
+    this.$.sketch.stop();
+
+    if (this.sketchDisabled && !this.undoDisabled) {
+      this.sketchDisabled = false;
+      this.$.sketch.undo();
+      this.$.sketch.$.data.history = this.$.sketch.$.data.history.slice(0, -1);
+    }
+
+    this.$.sketch.data = "";
+
+    if (this.sketchDisabled && this.undoDisabled) {
+      this.$.sketch.$.data.clearHistory();
+    }
+
+    this.sketchDisabled = false;
+    this.undoDisabled = false;
+  },
+  _peek: function () {
+    if (this.drawing) {
+      return;
+    }
+
+    this.$.api.peek();
+    this.sketchDisabled = true;
+    this.undoDisabled = false;
+  },
+  _viewGallery: function () {
+    window.open("https://garyc.me/sketch/gallery.php");
+  },
+  _save: function () {
+    this.$.api.save(this.$.sketch.canvasData);
+  },
+  _copyImage: function () {
+    if (!window.ClipboardItem) {
+      return this._alert('unable to copy image onto clipboard');
+    }
+
+    this.$.sketch.copyCanvas();
+
+    this._alert('copied image to clipboard');
+  },
+  _copy: function () {
+    if (!this.sketchDisabled) {
+      var data = this.$.sketch.data;
+      navigator.clipboard.writeText(data);
+
+      if (data) {
+        this._alert('copied to clipboard');
+      } else {
+        this._alert('copied to clipboard (but at what cost)');
+      }
+    }
+  },
+  _paste: function () {
+    if (!navigator.clipboard.readText) {
+      return this._alert('unable to read clipboard');
+    }
+
+    if (this.drawing) {
+      return;
+    }
+
+    navigator.clipboard.readText().then(text => {
+      text = text.trim();
+      const pattern = /^[\s0-9a-zA-Z]*$/;
+      var isValidData = pattern.test(text);
+
+      if (!isValidData) {
+        return this._alert('invalid clipboard input');
+      }
+
+      ;
+      this.$.sketch.stop();
+      this.$.sketch.data = text;
+      this.sketchDisabled = false;
+
+      this._alert('pasted from clipboard');
+    });
+  },
+  _changeSize: function (e) {
+    e.preventDefault();
+    var v = e.detail.key == '[' ? -1 : 1;
+    var tool = this.$.sketch.desiredTool;
+    var newValue, changedValue;
+
+    switch (tool) {
+      case 'eraser':
+        newValue = this.$.sketch.eraserRadius += v;
+        changedValue = this.$.sketch.eraserRadius;
+        break;
+
+      case 'screentone':
+        newValue = this.$.sketch.toneRadius += v;
+        changedValue = this.$.sketch.toneRadius;
+    } // the sliders take care of the value limits, so we're taking advantage of
+    // that instead of hard-coding the limits again
+
+
+    newValue = changedValue != newValue ? changedValue : newValue;
+
+    if (newValue) {
+      this._alert(`${tool} size: ${newValue}`);
+    }
+  },
+  _isErasing: function (tool) {
+    return tool === 'eraser';
+  },
+  _isDrawing: function (tool) {
+    return tool === 'pen';
+  },
+  _isMoving: function (tool) {
+    return tool === 'move';
+  },
+  _isShaping: function (tool) {
+    return tool === 'shape';
+  },
+  _isToning: function (tool) {
+    return tool === 'screentone';
+  },
+  _isFilling: function (tool) {
+    return tool === 'fill';
+  },
+  // display-related methods
+  _menuAction: function (event, elem, tool) {
+    if (event.type == 'keys-pressed') {
+      if (this.$.sketch.desiredTool == tool) {
+        elem.toggle();
+      }
+    } else {
+      // sometimes an opened-changed event fires on init
+      // so we wanna return to prevent unwanted tool changes
+      var opened = event.detail.value;
+
+      if (!opened) {
+        return;
+      }
+
+      if (this.$.sketch.desiredTool != tool) {
+        elem.close();
+      }
+    }
+
+    this.$.sketch.desiredTool = tool;
+  },
+  _closeMenus: function () {
+    document.querySelectorAll('iron-dropdown').forEach(x => x.close());
+  },
+  _flooredInk: function (ink) {
+    return Math.floor(ink * 100) / 100;
+  },
+  _hideStats: function () {
+    var title = document.querySelector('.title');
+    var stats = title.querySelector('.stats');
+    var span = title.querySelector('span'); // first span
+
+    var alertSpan = title.querySelector('span#alert');
+    var maxWidth = span.offsetWidth + alertSpan.offsetWidth + stats.offsetWidth + 26; // margins + 2
+
+    stats.style.visibility = title.offsetWidth <= maxWidth ? 'hidden' : '';
+  },
+  _hideUI: function (event) {
+    event.detail.keyboardEvent.preventDefault();
+    this.$.toolbar.hidden = !this.$.toolbar.hidden; // guess i gotta call this manually
+
+    this.$.container._onIronResize();
+  },
+  _alert: async function (message) {
+    var title = document.querySelector('.title');
+    var span = document.querySelector('.title span');
+    var alertSpan = document.querySelector('#alert');
+    alertSpan.innerHTML = message;
+    span.hidden = true;
+
+    this._hideStats();
+
+    let sleepPromise = this._sleepPromise = this._sleep(3000);
+
+    await sleepPromise;
+
+    if (this._sleepPromise === sleepPromise) {
+      alertSpan.innerHTML = '';
+      span.hidden = false;
+
+      this._hideStats();
+    }
+  },
+  _sleep: function (ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  },
+  _arrowEvent: function (event) {
+    if (this.etchMode && !this.sketchDisabled) {
+      this.$.sketch.etchEvent(event.detail.keyboardEvent);
+    }
+
+    ;
+  },
+  _setSetting: function (name, settings, target = this, targetName = null) {
+    if (settings[name] != null) {
+      target[targetName || name] = settings[name];
+    }
+  }
+});</script>
+</dom-module>

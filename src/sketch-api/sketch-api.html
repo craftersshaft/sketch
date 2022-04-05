@@ -1,0 +1,122 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/iron-ajax/iron-ajax.html">
+
+<dom-module id="sketch-api">
+  <template>
+    <iron-ajax id="getStatsRequest" url="https://kawaii-cors.herokuapp.com/https://garyc.me/sketch/getStats.php?timespan=300" handle-as="text" on-response="_onGetStats"></iron-ajax>
+    <iron-ajax id="getMaxIDRequest" url="https://kawaii-cors.herokuapp.com/https://garyc.me/sketch/getMaxID.php" handle-as="text" on-response="_onSwap" on-error="_onError"></iron-ajax>
+    <iron-ajax id="swapRequest" url="https://kawaii-cors.herokuapp.com/https://garyc.me/sketch/swap.php?v=32" method="POST" handle-as="text" on-response="_onSwap" on-error="_onError"></iron-ajax>
+    <iron-ajax id="getRequest" url="https://kawaii-cors.herokuapp.com/https://garyc.me/sketch/get.php" handle-as="text" on-response="_onGet" on-error="_onError"></iron-ajax>
+  </template>
+  <script>(function () {
+  var GET_STATS_INTERVAL = 10000;
+  var GET_INTERVAL = 10000;
+  Polymer({
+    is: 'sketch-api',
+    ready: function () {
+      this._getStats();
+
+      setInterval(this._getStats.bind(this), GET_STATS_INTERVAL);
+    },
+    // Public properties
+    properties: {
+      loading: {
+        type: Boolean,
+        value: false,
+        notify: true,
+        readOnly: true
+      },
+      sketches: {
+        type: Number,
+        value: -1,
+        notify: true,
+        readOnly: true
+      },
+      artists: {
+        type: Number,
+        value: -1,
+        notify: true,
+        readOnly: true
+      },
+      peekers: {
+        type: Number,
+        value: -1,
+        notify: true,
+        readOnly: true
+      }
+    },
+    // Private properties
+    _waiting: false,
+    // Public functions
+    peek: function () {
+      this.$.getMaxIDRequest.generateRequest();
+
+      this._setLoading(true);
+    },
+    swap: function (data) {
+      this.$.swapRequest.body = data;
+      this.$.swapRequest.generateRequest();
+
+      this._setLoading(true);
+    },
+    save: function (data) {
+      var a = document.createElement('a');
+      a.setAttribute('download', 'sketch.png');
+      a.href = data;
+      a.click();
+    },
+    // Private functions
+    _getStats: function () {
+      if (document.visibilityState == 'visible') {
+        this.$.getStatsRequest.generateRequest();
+      }
+    },
+    _onGet: function (event) {
+      var data = event.detail.response;
+
+      if (data == "wait") {
+        if (!this._waiting) {
+          this.fire('swap-waiting');
+        }
+
+        this._waiting = true;
+        setTimeout(this.$.getRequest.generateRequest.bind(this.$.getRequest), GET_INTERVAL);
+      } else {
+        this._waiting = false;
+        this.fire('get', data);
+
+        this._setLoading(false);
+      }
+    },
+    _onSwap: function (event) {
+      var id = parseInt(event.detail.response);
+
+      if (id < 0) {
+        setTimeout(this.$.swapRequest.generateRequest.bind(this.$.swapRequest), (1 - id) * 1000);
+      } else {
+        this.$.getRequest.params = {
+          id: id || ""
+        };
+        this.$.getRequest.generateRequest();
+      }
+    },
+    _onGetStats: function (event) {
+      var stats = event.detail.response.split(",");
+
+      this._setSketches(parseInt(stats[0]));
+
+      this._setArtists(parseInt(stats[1]));
+
+      this._setPeekers(parseInt(stats[2]));
+    },
+    _onError: function (event) {
+      this.fire('swap-failed', {
+        swap: event.srcElement == this.$.swapRequest
+      });
+
+      this._setLoading(false);
+    }
+  });
+})();</script>
+</dom-module>
+
